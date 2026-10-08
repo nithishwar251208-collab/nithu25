@@ -1,0 +1,699 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+// Enums
+enum Role {
+  GUEST
+  STUDENT
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ExamType {
+  CAT1
+  CAT2
+  FAT
+  MIDTERM
+  ENDSEM
+  INTERNAL
+  OTHER
+}
+
+enum ProcessingStatus {
+  QUEUED
+  PROCESSING
+  EXTRACTED
+  CLASSIFIED
+  ANALYZED
+  COMPLETED
+  FAILED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  MACHINE_PROCESSED
+  ADMIN_REVIEWED
+  VERIFIED
+  REJECTED
+}
+
+enum OcrConfidenceLevel {
+  HIGH_CONFIDENCE
+  MEDIUM_CONFIDENCE
+  LOW_CONFIDENCE
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum BloomLevel {
+  REMEMBER
+  UNDERSTAND
+  APPLY
+  ANALYZE
+  EVALUATE
+  CREATE
+}
+
+enum DuplicateMatchType {
+  EXACT_DUPLICATE
+  NEAR_DUPLICATE
+  SIMILAR_QUESTION
+  SAME_CONCEPT_DIFFERENT_WORDING
+}
+
+enum TopicTrend {
+  INCREASING
+  STABLE
+  DECREASING
+  NEW
+  RETURNING
+}
+
+enum PracticeMode {
+  RANDOM
+  TOPIC
+  UNIT
+  SUBJECT
+  PYQ
+  IMPORTANT_TOPICS
+  WEAK_TOPICS
+  INCORRECT_QUESTIONS
+  TIMED_PRACTICE
+  MOCK_EXAM
+}
+
+enum RevisionState {
+  NEW
+  LEARNING
+  NEEDS_REVISION
+  MASTERED
+}
+
+enum SourceCategory {
+  OFFICIAL
+  INSTITUTIONAL
+  STUDENT_COMMUNITY
+  EDUCATIONAL
+  UNKNOWN
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// 1. Users & Profiles
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?   @map("password_hash")
+  authProvider  String    @default("local") @map("auth_provider")
+  role          Role      @default(STUDENT)
+  isVerified    Boolean   @default(false) @map("is_verified")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+
+  profile          Profile?
+  practiceSessions PracticeSession[]
+  studentProgress  StudentProgress[]
+  revisionItems    RevisionItem[]
+  studyPlans       StudyPlan[]
+  aiConversations  AIConversation[]
+  notifications    Notification[]
+  syncLogs         SyncLog[]
+
+  @@map("users")
+}
+
+model Profile {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  name         String
+  universityId String?  @map("university_id")
+  campusId     String?  @map("campus_id")
+  departmentId String?  @map("department_id")
+  programId    String?  @map("program_id")
+  regulationId String?  @map("regulation_id")
+  semesterId   String?  @map("semester_id")
+  preferences  Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university   University? @relation(fields: [universityId], references: [id])
+  campus       Campus?     @relation(fields: [campusId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
+  program      Program?    @relation(fields: [programId], references: [id])
+  regulation   Regulation? @relation(fields: [regulationId], references: [id])
+  semester     Semester?   @relation(fields: [semesterId], references: [id])
+
+  @@map("profiles")
+}
+
+// 2. Academic Hierarchy
+model University {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  country   String   @default("India")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  campuses       Campus[]
+  regulations    Regulation[]
+  profiles       Profile[]
+  questionPapers QuestionPaper[]
+
+  @@map("universities")
+}
+
+model Campus {
+  id           String   @id @default(uuid())
+  universityId String   @map("university_id")
+  name         String
+  code         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  university   University   @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  departments  Department[]
+  profiles     Profile[]
+
+  @@unique([universityId, code])
+  @@map("campuses")
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  campusId  String   @map("campus_id")
+  name      String
+  code      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  campus    Campus    @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  programs  Program[]
+  profiles  Profile[]
+
+  @@unique([campusId, code])
+  @@map("departments")
+}
+
+model Program {
+  id           String   @id @default(uuid())
+  departmentId String   @map("department_id")
+  name         String
+  code         String
+  degree       String   @default("B.Tech")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  semesters    Semester[]
+  profiles     Profile[]
+
+  @@unique([departmentId, code])
+  @@map("programs")
+}
+
+model Regulation {
+  id           String   @id @default(uuid())
+  universityId String   @map("university_id")
+  name         String
+  code         String
+  year         Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  university     University      @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  profiles       Profile[]
+  questionPapers QuestionPaper[]
+
+  @@unique([universityId, code])
+  @@map("regulations")
+}
+
+model Semester {
+  id        String   @id @default(uuid())
+  programId String   @map("program_id")
+  name      String
+  number    Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  program        Program         @relation(fields: [programId], references: [id], onDelete: Cascade)
+  courses        Course[]
+  profiles       Profile[]
+  questionPapers QuestionPaper[]
+
+  @@unique([programId, number])
+  @@map("semesters")
+}
+
+model Course {
+  id         String   @id @default(uuid())
+  semesterId String   @map("semester_id")
+  code       String   @unique
+  name       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  semester Semester  @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  subjects Subject[]
+
+  @@map("courses")
+}
+
+model Subject {
+  id        String   @id @default(uuid())
+  courseId  String   @map("course_id")
+  code      String   @unique
+  name      String
+  credits   Int      @default(3)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  course         Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  units          Unit[]
+  questionPapers QuestionPaper[]
+  questions      Question[]
+
+  @@map("subjects")
+}
+
+model Unit {
+  id          String   @id @default(uuid())
+  subjectId   String   @map("subject_id")
+  number      Int
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topics    Topic[]
+  questions Question[]
+
+  @@unique([subjectId, number])
+  @@map("units")
+}
+
+model Topic {
+  id          String   @id @default(uuid())
+  unitId      String   @map("unit_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  unit          Unit            @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  subtopics     Subtopic[]
+  questions     Question[]
+  topicAnalysis TopicAnalysis?
+
+  @@map("topics")
+}
+
+model Subtopic {
+  id          String   @id @default(uuid())
+  topicId     String   @map("topic_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  topic     Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  concepts  Concept[]
+  questions Question[]
+
+  @@map("subtopics")
+}
+
+model Concept {
+  id          String   @id @default(uuid())
+  subtopicId  String   @map("subtopic_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  subtopic  Subtopic   @relation(fields: [subtopicId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@map("concepts")
+}
+
+// 3. Question Papers & Extraction
+model QuestionPaper {
+  id                 String             @id @default(uuid())
+  universityId       String             @map("university_id")
+  subjectId          String             @map("subject_id")
+  regulationId       String?            @map("regulation_id")
+  semesterId         String?            @map("semester_id")
+  examType           ExamType           @default(OTHER) @map("exam_type")
+  academicYear       String             @map("academic_year")
+  examDate           DateTime?          @map("exam_date")
+  examSlot           String?            @map("exam_slot")
+  sourceId           String?            @map("source_id")
+  originalFileUrl    String             @map("original_file_url")
+  fileHash           String             @map("file_hash")
+  processingStatus   ProcessingStatus   @default(QUEUED) @map("processing_status")
+  verificationStatus VerificationStatus @default(UNVERIFIED) @map("verification_status")
+  metadataJson       Json               @default("{}") @map("metadata_json")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  university University      @relation(fields: [universityId], references: [id])
+  subject    Subject         @relation(fields: [subjectId], references: [id])
+  regulation Regulation?     @relation(fields: [regulationId], references: [id])
+  semester   Semester?       @relation(fields: [semesterId], references: [id])
+  source     SourceRegistry? @relation(fields: [sourceId], references: [id])
+  questions  Question[]
+
+  @@index([subjectId, academicYear, examType])
+  @@map("question_papers")
+}
+
+// 4. Questions & Deduplication
+model DuplicateGroup {
+  id        String             @id @default(uuid())
+  name      String
+  matchType DuplicateMatchType @default(SIMILAR_QUESTION) @map("match_type")
+  notes     String?
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  questions Question[]
+
+  @@map("duplicate_groups")
+}
+
+model Question {
+  id                 String             @id @default(uuid())
+  questionPaperId    String             @map("question_paper_id")
+  subjectId          String             @map("subject_id")
+  unitId             String?            @map("unit_id")
+  topicId            String?            @map("topic_id")
+  subtopicId         String?            @map("subtopic_id")
+  conceptId          String?            @map("concept_id")
+  questionNumber     String             @map("question_number")
+  questionText       String             @map("question_text")
+  normalizedText     String             @map("normalized_text")
+  marks              Float              @default(2.0)
+  section            String?
+  questionType       String             @default("DESCRIPTIVE") @map("question_type") // MCQ, DESCRIPTIVE, NUMERICAL, CODE
+  parentQuestionId   String?            @map("parent_question_id")
+  optionsJson        Json?              @map("options_json")
+  correctAnswer      String?            @map("correct_answer")
+  sourcePage         Int?               @map("source_page")
+  ocrConfidence      OcrConfidenceLevel @default(HIGH_CONFIDENCE) @map("ocr_confidence")
+  difficulty         Difficulty         @default(MEDIUM)
+  bloomLevel         BloomLevel         @default(UNDERSTAND) @map("bloom_level")
+  isAiClassified     Boolean            @default(true) @map("is_ai_classified")
+  duplicateGroupId   String?            @map("duplicate_group_id")
+  verificationStatus VerificationStatus @default(UNVERIFIED) @map("verification_status")
+  embeddingJson      String?            @map("embedding_json") // JSON-encoded vector float[]
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  questionPaper          QuestionPaper            @relation(fields: [questionPaperId], references: [id], onDelete: Cascade)
+  subject                Subject                  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  unit                   Unit?                    @relation(fields: [unitId], references: [id])
+  topic                  Topic?                   @relation(fields: [topicId], references: [id])
+  subtopic               Subtopic?                @relation(fields: [subtopicId], references: [id])
+  concept                Concept?                 @relation(fields: [conceptId], references: [id])
+  duplicateGroup         DuplicateGroup?          @relation(fields: [duplicateGroupId], references: [id])
+  parentQuestion         Question?                @relation("SubQuestions", fields: [parentQuestionId], references: [id])
+  subQuestions           Question[]               @relation("SubQuestions")
+  practiceItems          PracticeSessionQuestion[]
+  revisionItems          RevisionItem[]
+
+  @@index([subjectId, unitId, topicId])
+  @@index([normalizedText])
+  @@map("questions")
+}
+
+// 5. Analytics & Topic Importance
+model TopicAnalysis {
+  id               String     @id @default(uuid())
+  topicId          String     @unique @map("topic_id")
+  importanceScore  Float      @default(0.0) @map("importance_score")
+  historicalFreq   Int        @default(0) @map("historical_freq")
+  recentFreq       Int        @default(0) @map("recent_freq")
+  yearCoverage     Int        @default(0) @map("year_coverage")
+  examCoverageJson Json       @default("[]") @map("exam_coverage_json")
+  marksWeight      Float      @default(0.0) @map("marks_weight")
+  conceptFreq      Int        @default(0) @map("concept_freq")
+  trend            TopicTrend @default(STABLE)
+  explanationJson  Json       @default("[]") @map("explanation_json")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@map("topic_analyses")
+}
+
+// 6. Practice Engine & Progress
+model PracticeSession {
+  id              String       @id @default(uuid())
+  userId          String       @map("user_id")
+  mode            PracticeMode @default(RANDOM)
+  subjectId       String?      @map("subject_id")
+  unitId          String?      @map("unit_id")
+  topicId         String?      @map("topic_id")
+  totalQuestions  Int          @default(0) @map("total_questions")
+  score           Float        @default(0.0)
+  totalMarks      Float        @default(0.0) @map("total_marks")
+  accuracy        Float        @default(0.0)
+  timeTakenSec    Int          @default(0) @map("time_taken_sec")
+  isCompleted     Boolean      @default(false) @map("is_completed")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  completedAt     DateTime?    @map("completed_at")
+
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions PracticeSessionQuestion[]
+
+  @@map("practice_sessions")
+}
+
+model PracticeSessionQuestion {
+  id                String   @id @default(uuid())
+  practiceSessionId String   @map("practice_session_id")
+  questionId        String   @map("question_id")
+  userAnswer        String?  @map("user_answer")
+  isCorrect         Boolean? @map("is_correct")
+  scoreAwarded      Float?   @map("score_awarded")
+  timeTakenSec      Int      @default(0) @map("time_taken_sec")
+  answeredAt        DateTime? @map("answered_at")
+
+  practiceSession PracticeSession @relation(fields: [practiceSessionId], references: [id], onDelete: Cascade)
+  question        Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("practice_session_questions")
+}
+
+model StudentProgress {
+  id                 String   @id @default(uuid())
+  userId             String   @map("user_id")
+  subjectId          String?  @map("subject_id")
+  topicId            String?  @map("topic_id")
+  questionsAttempted Int      @default(0) @map("questions_attempted")
+  questionsCorrect   Int      @default(0) @map("questions_correct")
+  accuracy           Float    @default(0.0)
+  studyTimeMinutes   Int      @default(0) @map("study_time_minutes")
+  streakDays         Int      @default(0) @map("streak_days")
+  lastActivityAt     DateTime @default(now()) @map("last_activity_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subjectId, topicId])
+  @@map("student_progress")
+}
+
+// 7. Revision System (Spaced Repetition)
+model RevisionItem {
+  id               String        @id @default(uuid())
+  userId           String        @map("user_id")
+  questionId       String        @map("question_id")
+  status           RevisionState @default(NEW)
+  isBookmarked     Boolean       @default(false) @map("is_bookmarked")
+  isImportant      Boolean       @default(false) @map("is_important")
+  isIncorrect      Boolean       @default(false) @map("is_incorrect")
+  repetitions      Int           @default(0)
+  intervalDays     Float         @default(1.0) @map("interval_days")
+  easeFactor       Float         @default(2.5) @map("ease_factor")
+  nextRevisionDate DateTime      @default(now()) @map("next_revision_date")
+  lastRevisedAt    DateTime?     @map("last_revised_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@map("revision_items")
+}
+
+// 8. Study Plans
+model StudyPlan {
+  id                 String    @id @default(uuid())
+  userId             String    @map("user_id")
+  title              String
+  planType           String    @default("DAILY") @map("plan_type") // DAILY, WEEKLY, SUBJECT, EXAM_PREP, REVISION
+  subjectId          String?   @map("subject_id")
+  examDate           DateTime? @map("exam_date")
+  targetHoursPerDay  Float     @default(2.0) @map("target_hours_per_day")
+  scheduleJson       Json      @default("[]") @map("schedule_json")
+  status             String    @default("ACTIVE")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("study_plans")
+}
+
+// 9. Nithu AI & Conversations
+model AIConversation {
+  id        String      @id @default(uuid())
+  userId    String      @map("user_id")
+  title     String      @default("New Chat")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AIMessage[]
+
+  @@map("ai_conversations")
+}
+
+model AIMessage {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  role           String   // user, assistant, system
+  content        String
+  intent         String?
+  sourcesJson    Json     @default("[]") @map("sources_json")
+  citationsJson  Json     @default("[]") @map("citations_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_messages")
+}
+
+// 10. Educational Resources
+model EducationalResource {
+  id           String   @id @default(uuid())
+  title        String
+  url          String   @unique
+  description  String?
+  sourceDomain String   @map("source_domain")
+  resourceType String   @default("DOC") @map("resource_type") // SYLLABUS, TEXTBOOK, LECTURE, OFFICIAL_SITE, REPOSITORY
+  relevance    Float    @default(0.9)
+  isVerified   Boolean  @default(true) @map("is_verified")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("educational_resources")
+}
+
+// 11. Source Registry & Scans
+model SourceRegistry {
+  id                        String         @id @default(uuid())
+  name                      String
+  baseUrl                   String         @unique @map("base_url")
+  category                  SourceCategory @default(OFFICIAL)
+  allowed                   Boolean        @default(true)
+  automatedCollectionAllowed Boolean       @default(false) @map("automated_collection_allowed")
+  robotsStatus              String         @default("ALLOWED") @map("robots_status")
+  lastChecked               DateTime?      @map("last_checked")
+  lastSuccess               DateTime?      @map("last_success")
+  lastFailure               DateTime?      @map("last_failure")
+  notes                     String?
+  active                    Boolean        @default(true)
+  createdAt                 DateTime       @default(now()) @map("created_at")
+
+  scans          SourceScan[]
+  questionPapers QuestionPaper[]
+
+  @@map("source_registries")
+}
+
+model SourceScan {
+  id            String    @id @default(uuid())
+  sourceId      String    @map("source_id")
+  startedAt     DateTime  @default(now()) @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  status        String    @default("IN_PROGRESS")
+  pagesScanned  Int       @default(0) @map("pages_scanned")
+  filesFound    Int       @default(0) @map("files_found")
+  filesImported Int       @default(0) @map("files_imported")
+  duplicates    Int       @default(0)
+  errorsJson    Json      @default("[]") @map("errors_json")
+
+  source SourceRegistry @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@map("source_scans")
+}
+
+// 12. Ingestion Jobs
+model IngestionJob {
+  id          String    @id @default(uuid())
+  type        String    // PDF_PROCESSING, OCR, EXTRACTION, CLASSIFICATION, EMBEDDING, DUPLICATE_DETECTION, ANALYSIS_CALC
+  status      JobStatus @default(QUEUED)
+  progress    Int       @default(0)
+  payloadJson Json      @default("{}") @map("payload_json")
+  resultJson  Json      @default("{}") @map("result_json")
+  error       String?
+  retryCount  Int       @default(0) @map("retry_count")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@map("ingestion_jobs")
+}
+
+// 13. Offline Sync & Notifications
+model SyncLog {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id")
+  clientVersion  Int      @map("client_version")
+  serverVersion  Int      @map("server_version")
+  syncAction     String   @map("sync_action")
+  hadConflict    Boolean  @default(false) @map("had_conflict")
+  syncedAt       DateTime @default(now()) @map("synced_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sync_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  message   String
+  type      String   @default("INFO") // REVISION, STUDY_PLAN, SYSTEM, ANNOUNCEMENT
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid())
+  eventType String   @map("event_type")
+  userId    String?  @map("user_id")
+  metaJson  Json     @default("{}") @map("meta_json")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([eventType, createdAt])
+  @@map("analytics_events")
+}

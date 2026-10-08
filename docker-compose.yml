@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Nithu25 API Backend Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nithu25_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://nithu_user:nithu_secure_pass@postgres:5432/nithu25_db?schema=public
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=production-secure-token-nithu25-scalable-secret-key
+      - CORS_ORIGIN=*
+      - STORAGE_DRIVER=local
+    volumes:
+      - nithu25_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: nithu25_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nithu_user
+      POSTGRES_PASSWORD: nithu_secure_pass
+      POSTGRES_DB: nithu25_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - nithu25_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nithu_user -d nithu25_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Queues & Caching
+  redis:
+    image: redis:7-alpine
+    container_name: nithu25_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - nithu25_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  nithu25_pgdata:
+  nithu25_redisdata:
+  nithu25_uploads:

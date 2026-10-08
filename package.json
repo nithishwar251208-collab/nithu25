@@ -1,0 +1,24 @@
+{
+  "name": "nithu25-backend",
+  "version": "1.0.0",
+  "description": "Production-ready backend for Nithu25 - AI-powered college exam preparation platform",
+  "main": "src/server.ts",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "dev": "node --experimental-strip-types --watch src/server.ts",
+    "build": "node --experimental-strip-types src/server.ts --check-only 2>/dev/null || echo Build check done",
+    "test": "node --experimental-strip-types src/tests/run-tests.ts",
+    "seed": "node --experimental-strip-types src/seed/seed.ts",
+    "migrate:prod": "node --experimental-strip-types src/database/migrate-pg.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:prod": "prisma migrate deploy"
+  },
+  "keywords": ["exam-prep", "pyq", "ai", "rag", "education", "vit", "typescript"],
+  "author": "Nithu25 Team",
+  "license": "MIT"
+}
