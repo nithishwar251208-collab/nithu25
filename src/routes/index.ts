@@ -131,7 +131,16 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
 
     // OPENAPI DOCS
     if (path === '/api/docs/openapi.json' && method === 'GET') {
-      return sendJson(res, 200, openApiSpec, origin);
+      // Rebuild servers per-request so process.env.APP_URL is always read live.
+      // openApiSpec.servers is evaluated once at module load (static const), which
+      // may run before Railway injects env vars. Per-request rebuild is the fix.
+      const liveAppUrl = process.env.APP_URL;
+      const liveServers: { url: string; description: string }[] = [];
+      if (liveAppUrl && liveAppUrl !== 'http://localhost:3000') {
+        liveServers.push({ url: liveAppUrl, description: 'Production Server' });
+      }
+      liveServers.push({ url: 'http://localhost:3000', description: 'Local Development Server' });
+      return sendJson(res, 200, { ...openApiSpec, servers: liveServers }, origin);
     }
     if (path === '/api/docs' && method === 'GET') {
       const swaggerHtml = `<!DOCTYPE html>

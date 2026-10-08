@@ -1,3 +1,16 @@
+// Servers list is built at module load time so the correct APP_URL is used
+// in production (e.g. https://nithu25-production.up.railway.app) without
+// hardcoding any hostname. Set APP_URL in your Railway/cloud environment.
+function buildServers() {
+  const appUrl = process.env.APP_URL;
+  const servers: { url: string; description: string }[] = [];
+  if (appUrl && appUrl !== 'http://localhost:3000') {
+    servers.push({ url: appUrl, description: 'Production Server' });
+  }
+  servers.push({ url: 'http://localhost:3000', description: 'Local Development Server' });
+  return servers;
+}
+
 export const openApiSpec = {
   openapi: "3.0.3",
   info: {
@@ -5,12 +18,7 @@ export const openApiSpec = {
     version: "1.0.0",
     description: "Production-ready REST API for Nithu25 - AI-powered college exam preparation platform. Built for direct consumption by Lovable frontend."
   },
-  servers: [
-    {
-      url: "http://localhost:3000",
-      description: "Local Development Server"
-    }
-  ],
+  servers: buildServers(),
   components: {
     securitySchemes: {
       bearerAuth: {
